@@ -1,9 +1,18 @@
 id,amount,category,date,note
-1,2000,food,2025-11-24,birthday party
-2,200,tour,2025-11-20,pitra parvat
-3,100,haircut,2025-10-28,hair cut 
-4,1000,birthday,2025-09-25,birthday party 
-5,250,travelling,2025-11-12,indore to home
-6,200,food,2025-10-16,dinner
-7,200,food,2025-11-24,dinner
-8,300,shopping ,2025-08-13,buy t-shirt
+1,2000,Food,2025-11-24,Birthday party
+2,200,Travel,2025-11-20,Pitra Parvat trip
+3,100,Personal Care,2025-10-28,Haircut
+4,1000,Event,2025-09-25,Birthday celebration
+5,250,Travel,2025-11-12,Indore to Home
+6,200,Food,2025-10-16,Dinner
+7,200,Food,2025-11-24,Dinner
+8,300,Shopping,2025-08-13,Bought t-shirt
+9,150,Food,2025-11-10,Breakfast at bakery
+10,1200,Electronics,2025-09-05,New earphones
+11,450,Travel,2025-10-02,Auto fare CG to Indore
+12,800,Grocery,2025-09-14,Monthly essentials
+13,600,Health,2025-08-21,Medical checkup
+14,900,Shopping,2025-11-18,New shirt purchase
+15,50,Snacks,2025-11-23,Evening tea and samosa
+
+
