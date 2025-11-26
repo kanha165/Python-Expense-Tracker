@@ -3,21 +3,33 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from supabase import create_client, Client
-import os
-from dotenv import load_dotenv
 import matplotlib.pyplot as plt
 
-# Load .env if present
-load_dotenv()
+# --------------------------------------------------------------------
+#   ✅ Load Supabase keys from Streamlit Secrets (Cloud Deployment)
+# --------------------------------------------------------------------
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+# --------------------------------------------------------------------
+#   ❗ No dotenv, no os.getenv(), no duplication
+# --------------------------------------------------------------------
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+# --------------------------------------------------------------------
+#   Validate keys
+# --------------------------------------------------------------------
+if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("Supabase keys missing.")
     st.stop()
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# --------------------------------------------------------------------
+#   Your actual app code continues below this...
+# --------------------------------------------------------------------
+st.title("Expense Tracker App")
+
+# ... your expense tracker UI and functions ...
+
 
 # ---------- Helpers ----------
 
@@ -222,3 +234,4 @@ elif page == "Admin Panel":
     st.header("Admin — All Expenses")
     data = fetch_all_expenses()
     st.dataframe(data)
+
