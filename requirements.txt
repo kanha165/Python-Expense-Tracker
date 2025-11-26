@@ -1,4 +1,8 @@
-﻿streamlit
+streamlit
 pandas
 matplotlib
+supabase
+python-dotenv
+
+
 
