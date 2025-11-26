@@ -1,10 +1,31 @@
+# streamlit_app.py
 import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
 import matplotlib.pyplot as plt
+import json
 
 CSV_FILE = "storage.csv"
+USERS_FILE = "users.json"  # create this in repo root to add users (username: password)
+
+# ------------------------------- AUTH HELPERS ---------------------------------
+def load_users():
+    """Load users from users.json if present, else return a default admin user."""
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # expecting format: {"user1":"pass1", "user2":"pass2"}
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            st.error("Error reading users.json, using default admin user.")
+    # default fallback
+    return {"admin": "admin"}
+
+def check_credentials(username, password, users):
+    return username in users and users[username] == password
 
 # ------------------------------- CSV INITIAL SETUP ---------------------------------
 def init_csv():
@@ -27,14 +48,60 @@ def save_data(df):
 def generate_new_id(df):
     return 1 if df.empty else int(df["id"].max()) + 1
 
-# Initialize CSV
+# Initialize CSV and users
 init_csv()
+USERS = load_users()
 
-# ------------------------------- STREAMLIT UI ---------------------------------
+# ------------------------------- SESSION STATE ---------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = None
+if "login_error" not in st.session_state:
+    st.session_state.login_error = ""
+
+# ------------------------------- AUTH UI ---------------------------------
+def show_login():
+    st.title("Expense Analyzer — Login")
+    st.write("Enter your username and password to continue.")
+    with st.form("login_form"):
+        uname = st.text_input("Username")
+        pwd = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            if check_credentials(uname.strip(), pwd, USERS):
+                st.session_state.logged_in = True
+                st.session_state.username = uname.strip()
+                st.session_state.login_error = ""
+                st.success("Login successful — welcome, " + st.session_state.username)
+            else:
+                st.session_state.login_error = "Invalid username or password."
+
+    if st.session_state.login_error:
+        st.error(st.session_state.login_error)
+
+    st.markdown("---")
+    st.info("To add users, create or edit a file named `users.json` in repository root with JSON like: `{\"alice\":\"pass1\",\"bob\":\"pass2\"}`")
+
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.username = None
+
+# If not logged in, show login screen only
+if not st.session_state.logged_in:
+    show_login()
+    st.stop()
+
+# ------------------------------- STREAMLIT UI (protected) ---------------------------------
 st.set_page_config(
     page_title="Expense Analyzer",
     layout="centered"
 )
+
+st.sidebar.title(f"Menu — {st.session_state.username}")
+if st.sidebar.button("Logout"):
+    logout()
+    st.experimental_rerun()
 
 st.title("Expense Analyzer (Streamlit)")
 st.caption("A clean and centered interface for tracking your expenses")
@@ -62,16 +129,25 @@ if page == "Dashboard":
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Spending", f"₹{total:.2f}")
             col2.metric("Total Entries", len(df))
-            top_name = top_cat.index[0]
-            col3.metric("Top Category", f"{top_name} (₹{top_cat.iloc[0]:.2f})")
+            if not top_cat.empty:
+                top_name = top_cat.index[0]
+                col3.metric("Top Category", f"{top_name} (₹{top_cat.iloc[0]:.2f})")
+            else:
+                col3.metric("Top Category", "N/A")
 
         st.markdown("---")
 
         st.subheader("Monthly Spending (Past Year)")
-        st.line_chart(monthly.tail(12))
+        try:
+            st.line_chart(monthly.tail(12))
+        except Exception:
+            st.info("Not enough data to show monthly chart.")
 
         st.subheader("Category-wise Spending")
-        st.bar_chart(top_cat)
+        try:
+            st.bar_chart(top_cat)
+        except Exception:
+            st.info("Not enough data to show category chart.")
 
 # ------------------------------- ADD EXPENSE ---------------------------------
 elif page == "Add Expense":
@@ -103,11 +179,8 @@ elif page == "Add Expense":
             "note": note.strip()
         }
 
-        # ✅ FIX: append removed → use concat
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-
         save_data(df)
-
         st.success("Expense added successfully")
 
 # ------------------------------- VIEW & FILTER ---------------------------------
