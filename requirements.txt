@@ -5,6 +5,9 @@ supabase
 python-dotenv
 postgrest
 gotrue
+typing_extensions
+
+
 
 
 
