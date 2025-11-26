@@ -3,6 +3,9 @@ pandas
 matplotlib
 supabase
 python-dotenv
+postgrest
+gotrue
+
 
 
 
