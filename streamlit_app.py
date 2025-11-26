@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 from supabase import create_client, Client
 import matplotlib.pyplot as plt
+from typing import Any
 
 # --------------------------------------------------------------------
 #   ✅ Load Supabase keys from Streamlit Secrets (Cloud Deployment)
@@ -24,32 +25,83 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     st.stop()
 
 # --------------------------------------------------------------------
-#   Your actual app code continues below this...
+#   Helpers to normalize SDK responses (works for object or dict)
 # --------------------------------------------------------------------
-st.title("Expense Tracker App")
+def _resp_data(resp: Any):
+    """Return the .data or ['data'] value, or None."""
+    if resp is None:
+        return None
+    if hasattr(resp, "data"):
+        return getattr(resp, "data")
+    if isinstance(resp, dict):
+        return resp.get("data")
+    return None
 
-# ... your expense tracker UI and functions ...
+def _resp_user(resp: Any):
+    """Return the user object from response, works for different SDK shapes."""
+    if resp is None:
+        return None
+    if hasattr(resp, "user"):
+        return getattr(resp, "user")
+    if isinstance(resp, dict):
+        # some responses nest user inside 'user' or 'data' -> 'user'
+        if "user" in resp and resp["user"]:
+            return resp["user"]
+        d = resp.get("data")
+        if isinstance(d, dict) and "user" in d:
+            return d["user"]
+    return None
 
+def _resp_error(resp: Any):
+    """Try to extract error info for debugging messages."""
+    if resp is None:
+        return None
+    if hasattr(resp, "error") and getattr(resp, "error"):
+        return getattr(resp, "error")
+    if isinstance(resp, dict):
+        return resp.get("error")
+    return None
 
-# ---------- Helpers ----------
-
+# --------------------------------------------------------------------
+#   Auth + DB helper functions (Supabase Python v2 style)
+# --------------------------------------------------------------------
 def signup(email: str, password: str):
-    return supabase.auth.sign_up({"email": email, "password": password})
+    try:
+        # use named parameters for v2
+        resp = supabase.auth.sign_up(email=email, password=password)
+        user = _resp_user(resp)
+        err = _resp_error(resp)
+        return {"user": user, "error": err}
+    except Exception as e:
+        return {"user": None, "error": str(e)}
 
 def signin(email: str, password: str):
-    return supabase.auth.sign_in_with_password({"email": email, "password": password})
+    try:
+        # correct v2 call uses named args
+        resp = supabase.auth.sign_in_with_password(email=email, password=password)
+        user = _resp_user(resp)
+        err = _resp_error(resp)
+        # some flows return session+user under 'data' key
+        return {"user": user, "raw": resp, "error": err}
+    except Exception as e:
+        return {"user": None, "raw": None, "error": str(e)}
 
 def signout():
-    supabase.auth.sign_out()
-    st.session_state.clear()
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+    # clear streamlit session state
+    for k in list(st.session_state.keys()):
+        st.session_state.pop(k, None)
 
 def fetch_expenses_for_user(user_id: str):
     resp = supabase.table("expenses").select("*").eq("user_id", user_id).order("date", desc=True).execute()
-    return resp.data if resp.data else []
+    return _resp_data(resp) or []
 
 def fetch_all_expenses():
     resp = supabase.table("expenses").select("*").order("date", desc=True).execute()
-    return resp.data if resp.data else []
+    return _resp_data(resp) or []
 
 def insert_expense(user_id, amount, category, date, note):
     payload = {
@@ -59,7 +111,8 @@ def insert_expense(user_id, amount, category, date, note):
         "date": date,
         "note": note
     }
-    return supabase.table("expenses").insert(payload).execute()
+    resp = supabase.table("expenses").insert(payload).execute()
+    return resp
 
 def update_expense(row_id, amount, category, date, note):
     payload = {
@@ -68,17 +121,21 @@ def update_expense(row_id, amount, category, date, note):
         "date": date,
         "note": note
     }
-    return supabase.table("expenses").update(payload).eq("id", row_id).execute()
+    resp = supabase.table("expenses").update(payload).eq("id", row_id).execute()
+    return resp
 
 def delete_expense(row_id):
-    return supabase.table("expenses").delete().eq("id", row_id).execute()
+    resp = supabase.table("expenses").delete().eq("id", row_id).execute()
+    return resp
 
 def is_admin(user_id):
     resp = supabase.table("admins").select("user_id").eq("user_id", user_id).execute()
-    return len(resp.data) > 0   # Correct check for new SDK
+    data = _resp_data(resp)
+    return bool(data and len(data) > 0)
 
-# ---------- UI ----------
-
+# --------------------------------------------------------------------
+#   Streamlit UI
+# --------------------------------------------------------------------
 st.set_page_config(page_title="Expense Tracker", layout="centered")
 st.title("Expense Tracker — Supabase (Multi-user)")
 
@@ -91,54 +148,85 @@ if not st.session_state["user"]:
 
     with c1:
         st.subheader("Login")
-        email_l = st.text_input("Email")
-        pwd_l = st.text_input("Password", type="password")
+        email_l = st.text_input("Email", key="login_email")
+        pwd_l = st.text_input("Password", type="password", key="login_pwd")
 
         if st.button("Login"):
-            res = signin(email_l, pwd_l)
-            if hasattr(res, "user") and res.user:
-                st.session_state["user"] = res.user
-                st.success("Login successful")
-                st.rerun()
+            out = signin(email_l, pwd_l)
+            if out.get("error"):
+                st.error(f"Login failed: {out.get('error')}")
             else:
-                st.error("Login failed")
+                user = out.get("user")
+                if user:
+                    # store minimal user info in session
+                    st.session_state["user"] = user
+                    st.success("Login successful")
+                    st.experimental_rerun()
+                else:
+                    # debugging: show raw resp briefly
+                    st.error("Login failed (no user returned). Check credentials or email confirmation.")
+                    # st.write(out.get("raw"))
 
     with c2:
         st.subheader("Sign Up")
-        email_s = st.text_input("New Email")
-        pwd_s = st.text_input("New Password", type="password")
+        email_s = st.text_input("New Email", key="signup_email")
+        pwd_s = st.text_input("New Password", type="password", key="signup_pwd")
 
         if st.button("Create Account"):
-            res = signup(email_s, pwd_s)
-            if hasattr(res, "user") and res.user:
-                st.success("Signup successful – Now login")
+            out = signup(email_s, pwd_s)
+            if out.get("error"):
+                st.error(f"Signup failed: {out.get('error')}")
             else:
-                st.error("Signup failed")
+                if out.get("user"):
+                    st.success("Signup successful — please login (or check email for confirmation if required).")
+                else:
+                    st.info("Signup initiated. Check your email for confirmation link if required.")
 
     st.stop()
 
 # ---------- MAIN APP ----------
 user = st.session_state["user"]
-user_id = user.id
+# user could be dict-like or object; try to extract id/email robustly
+if isinstance(user, dict):
+    user_id = user.get("id") or user.get("user_metadata", {}).get("id")
+    user_email = user.get("email")
+else:
+    user_id = getattr(user, "id", None)
+    user_email = getattr(user, "email", None)
+
+if not user_id:
+    # fallback: try current user via supabase auth
+    try:
+        current = supabase.auth.get_user()
+        cu = _resp_user(current)
+        if cu:
+            if isinstance(cu, dict):
+                user_id = cu.get("id")
+                user_email = cu.get("email")
+            else:
+                user_id = getattr(cu, "id", None)
+                user_email = getattr(cu, "email", None)
+            st.session_state["user"] = cu
+    except Exception:
+        pass
 
 col1, col2 = st.columns([3, 1])
 with col2:
-    st.write(f"Signed in as: {user.email}")
+    st.write(f"Signed in as: {user_email or 'Unknown'}")
     if st.button("Logout"):
         signout()
-        st.rerun()
+        st.experimental_rerun()
 
-is_admin_user = is_admin(user_id)
-
+is_admin_user = is_admin(user_id) if user_id else False
 if is_admin_user:
     st.success("Admin Access Granted")
 
 # Sidebar menu
-page = st.sidebar.radio(
-    "Menu", 
-    ["Dashboard", "Add Expense", "View & Filter", "Edit / Delete"] +
-    (["Admin Panel"] if is_admin_user else [])
-)
+page_options = ["Dashboard", "Add Expense", "View & Filter", "Edit / Delete"]
+if is_admin_user:
+    page_options.append("Admin Panel")
+
+page = st.sidebar.radio("Menu", page_options)
 
 # ------------------- Dashboard -------------------
 if page == "Dashboard":
@@ -149,15 +237,17 @@ if page == "Dashboard":
         st.info("No expenses found.")
     else:
         df = pd.DataFrame(data)
-        df["date"] = pd.to_datetime(df["date"])
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
         st.metric("Total Entries", len(df))
         st.metric("Total Spent", f"₹{df['amount'].sum():.2f}")
 
         try:
-            df_monthly = df.set_index("date").resample("M")["amount"].sum()
-            st.line_chart(df_monthly.tail(12))
-        except:
+            if "date" in df.columns:
+                df_monthly = df.set_index("date").resample("M")["amount"].sum()
+                st.line_chart(df_monthly.tail(12))
+        except Exception:
             pass
 
         st.dataframe(df)
@@ -166,16 +256,20 @@ if page == "Dashboard":
 elif page == "Add Expense":
     st.header("Add Expense")
     with st.form("add"):
-        amount = st.number_input("Amount", min_value=0.0)
+        amount = st.number_input("Amount", min_value=0.0, format="%f")
         category = st.text_input("Category")
-        date = st.date_input("Date")
+        date = st.date_input("Date", value=datetime.today())
         note = st.text_area("Note")
         submit = st.form_submit_button("Add Expense")
 
     if submit:
-        insert_expense(user_id, amount, category, str(date), note)
-        st.success("Added")
-        st.rerun()
+        resp = insert_expense(user_id, amount, category, str(date), note)
+        err = _resp_error(resp)
+        if err:
+            st.error(f"Insert failed: {err}")
+        else:
+            st.success("Added")
+            st.experimental_rerun()
 
 # ------------------- View Filter -------------------
 elif page == "View & Filter":
@@ -186,16 +280,19 @@ elif page == "View & Filter":
         st.info("No data")
     else:
         df = pd.DataFrame(data)
-        df["date"] = pd.to_datetime(df["date"])
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-        cat = st.selectbox("Category", ["All"] + list(df["category"].unique()))
-        start = st.date_input("Start", df["date"].min())
-        end = st.date_input("End", df["date"].max())
+        categories = ["All"] + list(df["category"].dropna().unique())
+        cat = st.selectbox("Category", categories)
+        start = st.date_input("Start", df["date"].min().date() if not df["date"].isnull().all() else datetime.today())
+        end = st.date_input("End", df["date"].max().date() if not df["date"].isnull().all() else datetime.today())
 
-        f = df
+        f = df.copy()
         if cat != "All":
             f = f[f["category"] == cat]
-        f = f[(f["date"].dt.date >= start) & (f["date"].dt.date <= end)]
+        if "date" in f.columns:
+            f = f[(f["date"].dt.date >= start) & (f["date"].dt.date <= end)]
 
         st.dataframe(f)
 
@@ -208,30 +305,44 @@ elif page == "Edit / Delete":
         st.info("No records")
     else:
         df = pd.DataFrame(data)
-        df["date"] = pd.to_datetime(df["date"])
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-        rid = st.selectbox("Select ID", df["id"])
-        row = df[df["id"] == rid].iloc[0]
+        # ensure ids are unique and present
+        if "id" not in df.columns:
+            st.error("No ID column found in expenses table.")
+        else:
+            rid = st.selectbox("Select ID", df["id"])
+            row = df[df["id"] == rid].iloc[0]
 
-        with st.form("edit"):
-            amount = st.number_input("Amount", value=float(row["amount"]))
-            category = st.text_input("Category", value=row["category"])
-            date = st.date_input("Date", row["date"].date())
-            note = st.text_input("Note", value=row["note"])
+            with st.form("edit"):
+                amount = st.number_input("Amount", value=float(row["amount"]))
+                category = st.text_input("Category", value=row["category"])
+                date = st.date_input("Date", value=row["date"].date() if not pd.isna(row["date"]) else datetime.today())
+                note = st.text_input("Note", value=row.get("note", ""))
+                save = st.form_submit_button("Save")
+                delete = st.form_submit_button("Delete")
 
-            if st.form_submit_button("Save"):
-                update_expense(rid, amount, category, str(date), note)
-                st.success("Updated")
-                st.rerun()
+            if save:
+                resp = update_expense(rid, amount, category, str(date), note)
+                err = _resp_error(resp)
+                if err:
+                    st.error(f"Update failed: {err}")
+                else:
+                    st.success("Updated")
+                    st.experimental_rerun()
 
-            if st.form_submit_button("Delete"):
-                delete_expense(rid)
-                st.success("Deleted")
-                st.rerun()
+            if delete:
+                resp = delete_expense(rid)
+                err = _resp_error(resp)
+                if err:
+                    st.error(f"Delete failed: {err}")
+                else:
+                    st.success("Deleted")
+                    st.experimental_rerun()
 
 # ------------------- Admin Panel -------------------
 elif page == "Admin Panel":
     st.header("Admin — All Expenses")
     data = fetch_all_expenses()
-    st.dataframe(data)
-
+    st.dataframe(pd.DataFrame(data))
