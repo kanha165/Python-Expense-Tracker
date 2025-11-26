@@ -67,24 +67,29 @@ def _resp_error(resp: Any):
 # --------------------------------------------------------------------
 def signup(email: str, password: str):
     try:
-        # use named parameters for v2
-        resp = supabase.auth.sign_up(email=email, password=password)
+        resp = supabase.auth.sign_up({
+            "email": email,
+            "password": password
+        })
         user = _resp_user(resp)
         err = _resp_error(resp)
         return {"user": user, "error": err}
     except Exception as e:
         return {"user": None, "error": str(e)}
 
+
 def signin(email: str, password: str):
     try:
-        # correct v2 call uses named args
-        resp = supabase.auth.sign_in_with_password(email=email, password=password)
+        resp = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
         user = _resp_user(resp)
         err = _resp_error(resp)
-        # some flows return session+user under 'data' key
         return {"user": user, "raw": resp, "error": err}
     except Exception as e:
         return {"user": None, "raw": None, "error": str(e)}
+
 
 def signout():
     try:
@@ -346,3 +351,4 @@ elif page == "Admin Panel":
     st.header("Admin — All Expenses")
     data = fetch_all_expenses()
     st.dataframe(pd.DataFrame(data))
+
