@@ -166,7 +166,8 @@ if not st.session_state["user"]:
                     # store minimal user info in session
                     st.session_state["user"] = user
                     st.success("Login successful")
-                    st.experimental_rerun()
+                    st.rerun()
+
                 else:
                     # debugging: show raw resp briefly
                     st.error("Login failed (no user returned). Check credentials or email confirmation.")
@@ -351,4 +352,5 @@ elif page == "Admin Panel":
     st.header("Admin — All Expenses")
     data = fetch_all_expenses()
     st.dataframe(pd.DataFrame(data))
+
 
