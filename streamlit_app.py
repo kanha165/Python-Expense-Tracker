@@ -34,7 +34,6 @@ def signout():
     st.session_state.pop("token", None)
 
 def get_current_user():
-    # supabase.auth.get_user() returns current user if session exists
     try:
         data = supabase.auth.get_user()
         return data.user if data and hasattr(data, "user") else None
@@ -42,7 +41,6 @@ def get_current_user():
         return None
 
 def fetch_expenses_for_user(user_id: str):
-    # If user is admin (in admins table), we will fetch all on frontend (admin UID permitted by RLS)
     resp = supabase.table("expenses").select("*").eq("user_id", user_id).order("date", desc=True).execute()
     if resp.error:
         return []
@@ -80,7 +78,6 @@ def delete_expense(row_id):
     return resp
 
 def is_admin(user_id):
-    # checks admins table
     resp = supabase.table("admins").select("user_id").eq("user_id", user_id).execute()
     if resp.error:
         return False
@@ -90,13 +87,11 @@ def is_admin(user_id):
 st.set_page_config(page_title="Expense Tracker (Supabase)", layout="centered")
 st.title("Expense Tracker — Supabase (Multi-user)")
 
-# session
 if "user" not in st.session_state:
     st.session_state["user"] = None
 
 # Auth area
 if not st.session_state["user"]:
-    # Show auth forms: Sign In / Sign Up
     cols = st.columns(2)
     with cols[0]:
         st.subheader("Login")
@@ -107,57 +102,49 @@ if not st.session_state["user"]:
             if res and res.user:
                 st.success("Login successful")
                 st.session_state["user"] = res.user
-                st.experimental_rerun()
+                st.rerun()      # FIXED
             else:
-                # supabase returns session or error; check
                 if hasattr(res, "error") and res.error:
                     st.error(res.error.message if res.error.message else "Login failed")
                 else:
                     st.error("Login failed")
+
     with cols[1]:
         st.subheader("Sign up")
         email_s = st.text_input("Email (signup)", key="signup_email")
         pwd_s = st.text_input("Password (signup)", type="password", key="signup_pwd")
         if st.button("Sign up"):
             res = signup(email_s, pwd_s)
-            # sign_up may return user + confirmation info or error
             if hasattr(res, "error") and res.error:
                 st.error(res.error.message if res.error.message else "Signup failed")
             else:
                 st.success("Signup successful — check email for confirmation if required")
-                # do not auto-login; user may confirm email depending on Supabase settings
 
     st.markdown("---")
     st.info("Use the Sign Up form to create a new account. Then login using the Login form.")
     st.stop()
 
-# If logged in:
 user = st.session_state["user"]
 user_id = user["id"] if isinstance(user, dict) else getattr(user, "id", None)
 
-# Show main app
 col1, col2 = st.columns([3,1])
 with col2:
     st.write(f"Signed in as: {user['email'] if isinstance(user, dict) else user.email}")
     if st.button("Logout"):
         signout()
-        st.experimental_rerun()
+        st.rerun()     # FIXED
 
 is_admin_user = is_admin(user_id)
 
 if is_admin_user:
     st.success("You are an ADMIN — you can view & manage all users' expenses")
 
-# Tabs / navigation
 page = st.sidebar.radio("Menu", ["Dashboard", "Add Expense", "View & Filter", "Edit / Delete", "Admin Panel" if is_admin_user else None], index=0)
 
 # Dashboard
 if page == "Dashboard":
     st.header("Dashboard")
-    if is_admin_user:
-        data = fetch_all_expenses()
-    else:
-        data = fetch_expenses_for_user(user_id)
+    data = fetch_all_expenses() if is_admin_user else fetch_expenses_for_user(user_id)
 
     if not data:
         st.info("No expenses found.")
@@ -166,12 +153,13 @@ if page == "Dashboard":
         df["date"] = pd.to_datetime(df["date"])
         st.metric("Total entries", len(df))
         st.metric("Total spending", f"₹{df['amount'].sum():.2f}")
-        # monthly
+
         try:
             df_monthly = df.set_index("date").resample("M")["amount"].sum()
             st.line_chart(df_monthly.tail(12))
-        except Exception:
+        except:
             pass
+
         st.dataframe(df, use_container_width=True)
 
 # Add Expense
@@ -190,15 +178,12 @@ elif page == "Add Expense":
             st.error("Failed to add expense: " + str(resp.error))
         else:
             st.success("Expense added")
-            st.experimental_rerun()
+            st.rerun()      # FIXED
 
 # View & Filter
 elif page == "View & Filter":
     st.header("View & Filter")
-    if is_admin_user:
-        data = fetch_all_expenses()
-    else:
-        data = fetch_expenses_for_user(user_id)
+    data = fetch_all_expenses() if is_admin_user else fetch_expenses_for_user(user_id)
 
     if not data:
         st.info("No records")
@@ -209,58 +194,63 @@ elif page == "View & Filter":
         sel_cat = st.selectbox("Category", cats)
         start = st.date_input("Start", value=df["date"].min().date())
         end = st.date_input("End", value=df["date"].max().date())
+
         filtered = df
         if sel_cat != "All":
             filtered = filtered[filtered["category"] == sel_cat]
+
         filtered = filtered[(filtered["date"].dt.date >= start) & (filtered["date"].dt.date <= end)]
         st.dataframe(filtered, use_container_width=True)
 
 # Edit / Delete
 elif page == "Edit / Delete":
     st.header("Edit / Delete")
-    if is_admin_user:
-        data = fetch_all_expenses()
-    else:
-        data = fetch_expenses_for_user(user_id)
+    data = fetch_all_expenses() if is_admin_user else fetch_expenses_for_user(user_id)
+
     if not data:
         st.info("No records")
     else:
         df = pd.DataFrame(data)
         df["date"] = pd.to_datetime(df["date"])
+
         ids = df["id"].tolist()
-        sel = st.selectbox("Select ID to edit/delete", ids)
+        sel = st.selectbox("Select ID", ids)
         row = df[df["id"] == sel].iloc[0]
+
         with st.form("edit_form"):
             amt = st.number_input("Amount", value=float(row["amount"]))
             cat = st.text_input("Category", value=row["category"])
             date = st.date_input("Date", value=row["date"].date())
             note = st.text_area("Note", value=row["note"])
+
             if st.form_submit_button("Save changes"):
                 r = update_expense(sel, user_id, amt, cat, date.isoformat(), note)
                 if r.error:
                     st.error("Update failed: " + str(r.error))
                 else:
                     st.success("Updated")
-                    st.experimental_rerun()
+                    st.rerun()   # FIXED
+
             if st.form_submit_button("Delete"):
                 d = delete_expense(sel)
                 if d.error:
                     st.error("Delete failed: " + str(d.error))
                 else:
                     st.success("Deleted")
-                    st.experimental_rerun()
+                    st.rerun()  # FIXED
 
 # Admin panel
 elif page == "Admin Panel" and is_admin_user:
     st.header("Admin Panel — All users' expenses")
     data = fetch_all_expenses()
+
     if not data:
         st.info("No records")
     else:
         df = pd.DataFrame(data)
         df["date"] = pd.to_datetime(df["date"])
         st.dataframe(df, use_container_width=True)
-        st.markdown("You can delete any record by entering ID below.")
+
         rid = st.text_input("ID to delete (admin)")
         if st.button("Delete record (admin)"):
             try:
@@ -269,7 +259,6 @@ elif page == "Admin Panel" and is_admin_user:
                     st.error("Delete failed")
                 else:
                     st.success("Deleted record")
-                    st.experimental_rerun()
-            except Exception as e:
+                    st.rerun()   # FIXED
+            except:
                 st.error("Enter a valid ID")
-
