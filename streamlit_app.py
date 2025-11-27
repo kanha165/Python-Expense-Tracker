@@ -351,6 +351,12 @@ elif page == "Edit / Delete":
 elif page == "Admin Panel":
     st.header("Admin — All Expenses")
     data = fetch_all_expenses()
+
+
+
+    # redeploy trigger
+
     st.dataframe(pd.DataFrame(data))
+
 
 
