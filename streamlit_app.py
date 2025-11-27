@@ -1,227 +1,241 @@
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime
-from supabase import create_client, Client
+import matplotlib.pyplot as plt
 
-# ------------------ SUPABASE CONNECTION ------------------
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+CSV_FILE = "storage.csv"
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# ------------------------------- CSV INITIAL SETUP ---------------------------------
+def init_csv():
+    if not os.path.exists(CSV_FILE):
+        df = pd.DataFrame(columns=["id", "amount", "category", "date", "note"])
+        df.to_csv(CSV_FILE, index=False)
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Supabase keys missing in Streamlit Secrets")
-    st.stop()
+def load_data():
+    df = pd.read_csv(CSV_FILE)
+    if not df.empty:
+        df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    return df
 
-# ------------------ AUTH FUNCTIONS ------------------
+def save_data(df):
+    df_to_save = df.copy()
+    df_to_save["date"] = df_to_save["date"].dt.strftime("%Y-%m-%d")
+    df_to_save.to_csv(CSV_FILE, index=False)
 
-def signup(email, password):
-    try:
-        resp = supabase.auth.sign_up({"email": email, "password": password})
-        user = resp.user if hasattr(resp, "user") else None
-        return user, None
-    except Exception as e:
-        return None, str(e)
+def generate_new_id(df):
+    return 1 if df.empty else int(df["id"].max()) + 1
 
-def signin(email, password):
-    try:
-        resp = supabase.auth.sign_in_with_password(
-            {"email": email, "password": password}
-        )
+# Initialize CSV
+init_csv()
 
-        user = resp.user if hasattr(resp, "user") else None
+# ------------------------------- STREAMLIT UI ---------------------------------
+st.set_page_config(
+    page_title="Expense Analyzer",
+    layout="centered"
+)
 
-        # ✅ ATTACH SESSION TOKEN FOR RLS
-        if hasattr(resp, "session") and resp.session:
-            supabase.postgrest.auth(resp.session.access_token)
+st.title("Expense Analyzer (Streamlit)")
+st.caption("A clean and centered interface for tracking your expenses")
 
-        return user, None
-    except Exception as e:
-        return None, str(e)
+# Sidebar Menu
+st.sidebar.title("Menu")
+page = st.sidebar.radio(
+    "Go to",
+    ["Dashboard", "Add Expense", "View & Filter", "Edit / Delete", "Reports", "Export/Import"]
+)
 
-def signout():
-    try:
-        supabase.auth.sign_out()
-    except:
-        pass
-    st.session_state.clear()
-    st.rerun()
+# ------------------------------- DASHBOARD ---------------------------------
+if page == "Dashboard":
+    st.header("Dashboard Summary")
+    df = load_data()
 
-# ------------------ DATABASE FUNCTIONS ------------------
+    if df.empty:
+        st.info("No expenses yet. Add some from 'Add Expense'.")
+    else:
+        total = df["amount"].sum()
+        monthly = df.resample("M", on="date")["amount"].sum()
+        top_cat = df.groupby("category")["amount"].sum().sort_values(ascending=False)
 
-def fetch_user_expenses(user_id):
-    return supabase.table("expenses").select("*").eq("user_id", user_id).order("date", desc=True).execute().data
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Spending", f"₹{total:.2f}")
+        col2.metric("Total Entries", len(df))
+        top_name = top_cat.index[0]
+        col3.metric("Top Category", f"{top_name} (₹{top_cat.iloc[0]:.2f})")
 
-def fetch_all_expenses():
-    return supabase.table("expenses").select("*").order("date", desc=True).execute().data
+        st.markdown("---")
+        st.subheader("Spending Overview")
 
-def insert_expense(user_id, amount, category, date, note):
-    payload = {
-        "user_id": user_id,
-        "amount": float(amount),
-        "category": category,
-        "date": date,
-        "note": note
-    }
-    return supabase.table("expenses").insert(payload).execute()
+        # LEFT-RIGHT CHARTS WITH SPACE
+        col_left, col_space, col_right = st.columns([1, 0.15, 1])
 
-def update_expense(row_id, amount, category, date, note):
-    payload = {
-        "amount": float(amount),
-        "category": category,
-        "date": date,
-        "note": note
-    }
-    return supabase.table("expenses").update(payload).eq("id", row_id).execute()
+        with col_left:
+            st.subheader("Monthly Spending (Past Year)")
+            st.line_chart(monthly.tail(12))
 
-def delete_expense(row_id):
-    return supabase.table("expenses").delete().eq("id", row_id).execute()
+        with col_right:
+            st.subheader("Category-wise Spending")
+            st.bar_chart(top_cat)
 
-def is_admin(user_id):
-    data = supabase.table("admins").select("user_id").eq("user_id", user_id).execute().data
-    return bool(data)
+# ------------------------------- ADD EXPENSE ---------------------------------
+elif page == "Add Expense":
+    st.header("Add New Expense")
 
-# ------------------ UI ------------------
+    with st.form("add_expense_form", clear_on_submit=True):
+        amount = st.text_input("Amount (₹)")
+        category = st.text_input("Category")
+        date = st.date_input("Date", value=datetime.today())
+        note = st.text_area("Note")
+        submitted = st.form_submit_button("Add Expense")
 
-st.set_page_config(page_title="Expense Tracker", layout="centered")
-st.title("Expense Tracker")
+    if submitted:
+        try:
+            amount_val = float(amount)
+            if amount_val <= 0:
+                st.error("Amount must be greater than 0")
+                st.stop()
+        except:
+            st.error("Invalid amount! Enter a number.")
+            st.stop()
 
-# INIT SESSION
-if "user" not in st.session_state:
-    st.session_state["user"] = None
-if "user_id" not in st.session_state:
-    st.session_state["user_id"] = None
+        df = load_data()
+        new_row = {
+            "id": generate_new_id(df),
+            "amount": amount_val,
+            "category": category.strip(),
+            "date": pd.to_datetime(date),
+            "note": note.strip()
+        }
 
-# ------------------ LOGIN / SIGNUP ------------------
-if not st.session_state["user"]:
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+        save_data(df)
+        st.success("Expense added successfully")
+
+# ------------------------------- VIEW & FILTER ---------------------------------
+elif page == "View & Filter":
+    st.header("View and Filter Expenses")
+
+    df = load_data()
+    if df.empty:
+        st.warning("No records found.")
+    else:
+        with st.expander("Apply Filters"):
+            cols = st.columns(3)
+
+            with cols[0]:
+                categories = ["All"] + sorted(df["category"].unique())
+                selected_cat = st.selectbox("Category", categories)
+
+            with cols[1]:
+                start_date = st.date_input("Start date", df["date"].min().date())
+
+            with cols[2]:
+                end_date = st.date_input("End date", df["date"].max().date())
+
+        filtered = df.copy()
+
+        if selected_cat != "All":
+            filtered = filtered[filtered["category"] == selected_cat]
+
+        filtered = filtered[
+            (filtered["date"].dt.date >= start_date) &
+            (filtered["date"].dt.date <= end_date)
+        ]
+
+        st.subheader(f"Showing {len(filtered)} records")
+        st.dataframe(filtered, use_container_width=True)
+
+# ------------------------------- EDIT / DELETE ---------------------------------
+elif page == "Edit / Delete":
+    st.header("Edit or Delete Expense")
+
+    df = load_data()
+
+    if df.empty:
+        st.info("No records to edit or delete")
+    else:
+        ids = df["id"].tolist()
+        selected_id = st.selectbox("Choose ID", [None] + ids)
+
+        if selected_id:
+            row = df[df["id"] == selected_id].iloc[0]
+
+            with st.form("edit_form"):
+                amt = st.text_input("Amount", value=str(row["amount"]))
+                cat = st.text_input("Category", value=row["category"])
+                date = st.date_input("Date", value=row["date"].date())
+                note = st.text_area("Note", value=row["note"])
+                save_btn = st.form_submit_button("Save Changes")
+
+            if save_btn:
+                try:
+                    df.loc[df["id"] == selected_id, ["amount", "category", "date", "note"]] = [
+                        float(amt), cat, pd.to_datetime(date), note
+                    ]
+                    save_data(df)
+                    st.success("Record updated")
+                except:
+                    st.error("Invalid input!")
+
+        st.markdown("---")
+        delete_list = st.multiselect("Select IDs to delete", ids)
+
+        if st.button("Delete Selected"):
+            df = df[~df["id"].isin(delete_list)]
+            save_data(df)
+            st.success("Selected records deleted")
+
+# ------------------------------- REPORTS ---------------------------------
+elif page == "Reports":
+    st.header("Reports and Charts")
+    df = load_data()
+
+    if df.empty:
+        st.info("No data available")
+    else:
+        cat_summary = df.groupby("category")["amount"].sum()
+
+        col_left, col_space, col_right = st.columns([1, 0.15, 1])
+
+        with col_left:
+            st.subheader("Category Summary Table")
+            st.table(cat_summary)
+
+        with col_right:
+            st.subheader("Category Distribution")
+            fig, ax = plt.subplots()
+            ax.pie(
+                cat_summary.values,
+                labels=cat_summary.index,
+                autopct="%1.1f%%",
+                startangle=90
+            )
+            ax.axis("equal")
+            st.pyplot(fig)
+
+# ------------------------------- EXPORT / IMPORT ---------------------------------
+elif page == "Export/Import":
+    st.header("Export or Import Data")
+
+    df = load_data()
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Login")
-        email_l = st.text_input("Email")
-        pwd_l = st.text_input("Password", type="password")
-
-        if st.button("Login"):
-            user, err = signin(email_l, pwd_l)
-            if err:
-                st.error(f"Login failed: {err}")
-            elif user:
-                st.session_state["user"] = user
-                st.session_state["user_id"] = user.id
-                st.success("Login successful")
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
+        if df.empty:
+            st.info("No data to export.")
+        else:
+            csv = df.to_csv(index=False).encode()
+            st.download_button("Download CSV", csv, "expenses.csv")
 
     with col2:
-        st.subheader("Sign Up")
-        email_s = st.text_input("New Email")
-        pwd_s = st.text_input("New Password", type="password")
-
-        if st.button("Create Account"):
-            user, err = signup(email_s, pwd_s)
-            if err:
-                st.error(f"Signup failed: {err}")
-            else:
-                st.success("Signup successful! Now login.")
-
-    st.stop()
-
-# ------------------ MAIN APP ------------------
-
-user_id = st.session_state["user_id"]
-user_email = st.session_state["user"].email
-
-col1, col2 = st.columns([3, 1])
-with col2:
-    st.write(f"Signed in as: {user_email}")
-    if st.button("Logout"):
-        signout()
-
-admin = is_admin(user_id)
-if admin:
-    st.success("Admin Access Enabled")
-
-menu = ["Dashboard", "Add Expense", "View & Filter", "Edit / Delete"]
-if admin:
-    menu.append("Admin Panel")
-
-page = st.sidebar.radio("Menu", menu)
-
-# ------------------ DASHBOARD ------------------
-if page == "Dashboard":
-    data = fetch_all_expenses() if admin else fetch_user_expenses(user_id)
-
-    if not data:
-        st.info("No data found")
-    else:
-        df = pd.DataFrame(data)
-        df["date"] = pd.to_datetime(df["date"])
-
-        st.metric("Total Entries", len(df))
-        st.metric("Total Spent", f"₹{df['amount'].sum():.2f}")
-
-        st.dataframe(df)
-
-# ------------------ ADD EXPENSE ------------------
-elif page == "Add Expense":
-    with st.form("add"):
-        amount = st.number_input("Amount", min_value=0.0)
-        category = st.text_input("Category")
-        date = st.date_input("Date")
-        note = st.text_area("Note")
-        submit = st.form_submit_button("Add")
-
-    if submit:
-        insert_expense(user_id, amount, category, str(date), note)
-        st.success("Expense added")
-        st.rerun()
-
-# ------------------ VIEW FILTER ------------------
-elif page == "View & Filter":
-    data = fetch_all_expenses() if admin else fetch_user_expenses(user_id)
-    df = pd.DataFrame(data)
-    df["date"] = pd.to_datetime(df["date"])
-
-    categories = ["All"] + df["category"].unique().tolist()
-    cat = st.selectbox("Category", categories)
-
-    if cat != "All":
-        df = df[df["category"] == cat]
-
-    st.dataframe(df)
-
-# ------------------ EDIT / DELETE ------------------
-elif page == "Edit / Delete":
-    data = fetch_user_expenses(user_id)
-    df = pd.DataFrame(data)
-
-    if df.empty:
-        st.info("No records")
-    else:
-        rid = st.selectbox("Select ID", df["id"])
-        row = df[df["id"] == rid].iloc[0]
-
-        with st.form("edit"):
-            amount = st.number_input("Amount", value=float(row["amount"]))
-            category = st.text_input("Category", row["category"])
-            date = st.date_input("Date", datetime.fromisoformat(row["date"]).date())
-            note = st.text_input("Note", row["note"])
-            save = st.form_submit_button("Save")
-            delete = st.form_submit_button("Delete")
-
-        if save:
-            update_expense(rid, amount, category, str(date), note)
-            st.success("Updated")
-            st.rerun()
-
-        if delete:
-            delete_expense(rid)
-            st.success("Deleted")
-            st.rerun()
-
-# ------------------ ADMIN PANEL ------------------
-elif page == "Admin Panel":
-    data = fetch_all_expenses()
-    st.dataframe(pd.DataFrame(data))
+        uploaded = st.file_uploader("Upload CSV", type=["csv"])
+        if uploaded:
+            try:
+                new_df = pd.read_csv(uploaded)
+                save_data(new_df)
+                st.success("Uploaded and replaced existing data")
+            except:
+                st.error("Invalid CSV format")
