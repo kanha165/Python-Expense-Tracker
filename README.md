@@ -128,7 +128,7 @@ Branch: B.Tech CSIT
 
 Semester: 5th Sem
 
-College: Chameli Devi Group of Institutions, Indore
+College: Chameli Devi Group of Institutions, Indore.
 
 Project: Expense Analyzer (Python + CSV + OOP)
 
