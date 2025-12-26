@@ -120,16 +120,18 @@ id,amount,category,date,note
 
 ---
 
-## ❤️ Author
-
+**Author**
 Developed by **Kanha Patidar**
 
 Branch: B.Tech CSIT
 
 Semester: 5th Sem
 
-College: Chameli Devi Group of Institutions, Indore.
+College: Chameli Devi Group of Institutions, Indore
+
+Machine Learning inten at technorizen software solution. indore 
 
 Project: Expense Analyzer (Python + CSV + OOP)
 
 Purpose: Personal finance tracking & academic mini project
+
