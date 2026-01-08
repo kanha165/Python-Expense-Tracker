@@ -36,6 +36,77 @@ st.set_page_config(
     layout="centered"
 )
 
+# ------------------------------- CUSTOM UI THEME ---------------------------------
+st.markdown("""
+<style>
+
+/* ===== App Background ===== */
+.stApp {
+    background: linear-gradient(135deg, #e3f2fd, #f1f8e9);
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* ===== Main Title ===== */
+h1 {
+    color: #0d47a1;
+    text-align: center;
+    font-weight: 700;
+}
+
+/* ===== Section Headers ===== */
+h2, h3 {
+    color: #1b5e20;
+    font-weight: 600;
+}
+
+/* ===== Sidebar ===== */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0d47a1, #1976d2);
+}
+
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+/* ===== Buttons ===== */
+.stButton > button {
+    background-color: #1976d2;
+    color: white;
+    border-radius: 10px;
+    padding: 0.5em 1.4em;
+    font-weight: bold;
+    border: none;
+}
+
+.stButton > button:hover {
+    background-color: #0d47a1;
+    transform: scale(1.02);
+}
+
+/* ===== Input Fields ===== */
+input, textarea {
+    border-radius: 8px !important;
+    border: 2px solid #64b5f6 !important;
+}
+
+/* ===== Metrics Cards ===== */
+[data-testid="metric-container"] {
+    background-color: white;
+    border-radius: 14px;
+    padding: 15px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
+}
+
+/* ===== Tables ===== */
+[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
 st.title("Expense Analyzer (Streamlit)")
 st.caption("A clean and centered interface for tracking your expenses")
 
@@ -239,3 +310,4 @@ elif page == "Export/Import":
                 st.success("Uploaded and replaced existing data")
             except:
                 st.error("Invalid CSV format")
+
