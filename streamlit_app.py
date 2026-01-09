@@ -107,7 +107,7 @@ input, textarea {
 """, unsafe_allow_html=True)
 
 
-st.title("Expense Analyzer (Streamlit)")
+st.title("Expense Analyzer ")
 st.caption("A clean and centered interface for tracking your expenses")
 
 # Sidebar Menu
@@ -310,4 +310,5 @@ elif page == "Export/Import":
                 st.success("Uploaded and replaced existing data")
             except:
                 st.error("Invalid CSV format")
+
 
