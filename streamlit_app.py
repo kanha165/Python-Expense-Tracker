@@ -42,7 +42,7 @@ st.markdown("""
 
 /* ===== App Background ===== */
 .stApp {
-    background: linear-gradient(135deg, #e3f2fd, #f1f8e9);
+    background: linear-gradient(90deg, 	#f1dac4,#caf0f8);
     font-family: 'Segoe UI', sans-serif;
 }
 
@@ -61,11 +61,11 @@ h2, h3 {
 
 /* ===== Sidebar ===== */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d47a1, #1976d2);
+    background: linear-gradient(180deg, #7c9885, #b5b682);
 }
 
 section[data-testid="stSidebar"] * {
-    color: white !important;
+    color: #000000!important;
 }
 
 /* ===== Buttons ===== */
@@ -310,8 +310,4 @@ elif page == "Export/Import":
                 st.success("Uploaded and replaced existing data")
             except:
                 st.error("Invalid CSV format")
-
-
-
-
 
