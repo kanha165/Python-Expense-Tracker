@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 CSV_FILE = "storage.csv"
 
-# ------------------------------- CSV INITIAL SETUP ---------------------------------
+# -------------------------------- CSV INITIAL SETUP ---------------------------------
 def init_csv():
     if not os.path.exists(CSV_FILE):
         df = pd.DataFrame(columns=["id", "amount", "category", "date", "note"])
@@ -310,4 +310,5 @@ elif page == "Export/Import":
                 st.success("Uploaded and replaced existing data")
             except:
                 st.error("Invalid CSV format")
+
 
