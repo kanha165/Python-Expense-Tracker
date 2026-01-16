@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 CSV_FILE = "storage.csv"
 
-# -------------------------------- CSV INITIAL SETUP ---------------------------------
+# -------------------------------- CSV INITIAL SETUP -----------------------------------
 def init_csv():
     if not os.path.exists(CSV_FILE):
         df = pd.DataFrame(columns=["id", "amount", "category", "date", "note"])
@@ -30,13 +30,13 @@ def generate_new_id(df):
 # Initialize CSV
 init_csv()
 
-# ------------------------------- STREAMLIT UI ---------------------------------
+# ------------------------------- STREAMLIT UI ------------------------------------
 st.set_page_config(
     page_title="Expense Analyzer",
     layout="centered"
 )
 
-# ------------------------------- CUSTOM UI THEME ---------------------------------
+# ------------------------------- CUSTOM UI THEME -----------------------------------
 st.markdown("""
 <style>
 
@@ -310,6 +310,7 @@ elif page == "Export/Import":
                 st.success("Uploaded and replaced existing data")
             except:
                 st.error("Invalid CSV format")
+
 
 
 
